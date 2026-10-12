@@ -6,6 +6,7 @@ import { Alert, Input, Label } from "@/components/ui/primitives";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 const ZEN_DEFAULT = "https://opencode.ai/zen/v1";
+const GOOGLE_DEFAULT = "https://generativelanguage.googleapis.com/v1beta/openai";
 
 export function SetupForm() {
   const router = useRouter();
@@ -29,8 +30,9 @@ export function SetupForm() {
 
   useEffect(() => {
     if (provider === "opencode-zen") setBaseURL(ZEN_DEFAULT);
+    else if (provider === "google-aistudio") setBaseURL(GOOGLE_DEFAULT);
     else if (provider === "openai") setBaseURL("https://api.openai.com/v1");
-    else if (provider === "custom" && baseURL === ZEN_DEFAULT) setBaseURL("");
+    else if (provider === "custom" && (baseURL === ZEN_DEFAULT || baseURL === GOOGLE_DEFAULT)) setBaseURL("");
   }, [provider]); // eslint-disable-line
 
   async function test() {
@@ -64,6 +66,7 @@ export function SetupForm() {
           <select id="provider" value={provider} onChange={(e) => setProvider(e.target.value)}
             className="h-9 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 text-sm focus-ring">
             <option value="opencode-zen">OpenCode Zen (Recommended)</option>
+            <option value="google-aistudio">Google AI Studio (Gemini)</option>
             <option value="openai">OpenAI</option>
             <option value="custom">Other OpenAI-compatible</option>
           </select>
@@ -72,8 +75,14 @@ export function SetupForm() {
           <Label htmlFor="base">Base URL</Label>
           <Input id="base" value={baseURL} onChange={(e) => setBaseURL(e.target.value)}
             placeholder="https://opencode.ai/zen/v1" inputMode="url" autoComplete="off"
-            disabled={provider === "opencode-zen"} />
-          {provider === "opencode-zen" && <p className="mt-1 text-xs text-neutral-500">Fixed to the documented Zen endpoint.</p>}
+            disabled={provider === "opencode-zen" || provider === "google-aistudio"} />
+          {(provider === "opencode-zen" || provider === "google-aistudio") && (
+            <p className="mt-1 text-xs text-neutral-500">
+              {provider === "google-aistudio"
+                ? "Fixed to Google's documented OpenAI-compat endpoint. Use a Gemini API key from AI Studio."
+                : "Fixed to the documented Zen endpoint."}
+            </p>
+          )}
         </div>
         <div>
           <Label htmlFor="key">API key</Label>

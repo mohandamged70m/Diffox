@@ -20,6 +20,7 @@ Open the app → you see **AI setup first**. Enter provider, base URL, key, mode
 | Provider | Base URL | Notes |
 |---|---|---|
 | OpenCode Zen (default) | `https://opencode.ai/zen/v1` | OpenAI-compatible `GET /models` + `POST /chat/completions`. Verified Oct 2026 against public docs. |
+| Google AI Studio (Gemini) | `https://generativelanguage.googleapis.com/v1beta/openai` | Documented OpenAI-compat layer; Gemini API key sent as Bearer. Verified Oct 2026: https://ai.google.dev/gemini-api/docs/openai |
 | OpenAI | `https://api.openai.com/v1` | Same endpoints. |
 | Custom | your URL | Any OpenAI-compatible gateway. |
 

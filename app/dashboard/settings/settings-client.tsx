@@ -38,6 +38,13 @@ export function SettingsClient() {
   }
   useEffect(() => { load(); }, []);
 
+  function onProviderChange(v: string) {
+    setProvider(v);
+    if (v === "opencode-zen") setBaseURL("https://opencode.ai/zen/v1");
+    else if (v === "google-aistudio") setBaseURL("https://generativelanguage.googleapis.com/v1beta/openai");
+    else if (v === "openai") setBaseURL("https://api.openai.com/v1");
+  }
+
   async function save() {
     setBusy(true); setMsg(null);
     try {
@@ -79,8 +86,9 @@ export function SettingsClient() {
         <div className="mt-4 grid gap-4">
           <div>
             <Label htmlFor="sp">Provider</Label>
-            <select id="sp" value={provider} onChange={(e) => setProvider(e.target.value)} className="h-9 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 text-sm">
+            <select id="sp" value={provider} onChange={(e) => onProviderChange(e.target.value)} className="h-9 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 text-sm">
               <option value="opencode-zen">OpenCode Zen</option>
+              <option value="google-aistudio">Google AI Studio (Gemini)</option>
               <option value="openai">OpenAI</option>
               <option value="custom">Other OpenAI-compatible</option>
             </select>

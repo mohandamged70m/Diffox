@@ -6,7 +6,7 @@ import { testConnection } from "@/lib/providers/openai-compatible";
 import { persistentSupported, saveVault } from "@/lib/vault";
 
 const Body = z.object({
-  provider: z.enum(["opencode-zen", "openai", "custom"]).default("opencode-zen"),
+  provider: z.enum(["opencode-zen", "openai", "google-aistudio", "custom"]).default("opencode-zen"),
   baseURL: z.string().min(8).max(500),
   apiKey: z.string().min(4).max(500),
   model: z.string().min(1).max(200),
@@ -16,6 +16,9 @@ const Body = z.object({
 const PROVIDER_DEFAULTS: Record<string, string> = {
   "opencode-zen": "https://opencode.ai/zen/v1",
   openai: "https://api.openai.com/v1",
+  // Documented Gemini OpenAI-compat layer (Bearer $GEMINI_API_KEY). Verified Oct 2026:
+  // https://ai.google.dev/gemini-api/docs/openai
+  "google-aistudio": "https://generativelanguage.googleapis.com/v1beta/openai",
 };
 
 /**
