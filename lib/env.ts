@@ -12,7 +12,7 @@ const envSchema = z.object({
   GITHUB_WEBHOOK_SECRET: z.string().optional(),
   GITHUB_APP_SLUG: z.string().optional(),
   AI_PROVIDER_BASE_URL: z.string().url().default("https://opencode.ai/zen/v1"),
-  REVIEWKIT_LOCAL_TEST: z.string().optional(),
+  DIFFOX_LOCAL_TEST: z.string().optional(),
   WORKER_POLL_MS: z.coerce.number().default(5000),
 });
 
@@ -36,7 +36,7 @@ export function requireEncryptionSecret(): string {
 }
 
 export function isLocalTestMode(): boolean {
-  return process.env.REVIEWKIT_LOCAL_TEST === "1";
+  return process.env.DIFFOX_LOCAL_TEST === "1";
 }
 
 export function configuredFlags() {

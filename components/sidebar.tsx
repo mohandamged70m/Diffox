@@ -20,7 +20,7 @@ export function Sidebar() {
     <aside className="flex w-56 shrink-0 flex-col border-r border-neutral-800 bg-neutral-950 max-md:hidden">
       <Link href="/overview" className="flex items-center gap-2 px-5 pb-5 pt-6">
         <span className="flex h-8 w-8 items-center justify-center rounded-md bg-neutral-100 text-neutral-950"><GitCompare size={18} /></span>
-        <span className="text-base font-semibold tracking-tight">ReviewKit</span>
+        <span className="text-base font-semibold tracking-tight">DifFox</span>
       </Link>
       <nav className="flex flex-col gap-1 px-3" aria-label="Primary">
         {NAV.map((n) => {

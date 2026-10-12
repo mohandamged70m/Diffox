@@ -74,7 +74,7 @@ async function handleInstallationEvent(db: Db, event: string, payload: Record<st
   if (action === "deleted") return;
   const { installationOctokit } = await import("@/lib/github/app");
   const { data: owners } = await db.from("installations").select("account_id").eq("installation_id", installation.id);
-  if (!owners?.length) return; // not connected by any ReviewKit account
+  if (!owners?.length) return; // not connected by any DifFox account
   let repos: { id: number; full_name: string }[] = [];
   try {
     const octo = await installationOctokit(installation.id);

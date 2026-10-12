@@ -6,7 +6,7 @@ export interface Account {
   clerk_user_id: string;
 }
 /**
- * Resolve the signed-in Clerk user to a ReviewKit account row.
+ * Resolve the signed-in Clerk user to a DifFox account row.
  * Creates the row on first sign-in. Throws 401 when signed out.
  */
 export async function requireAccount(): Promise<Account> {

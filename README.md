@@ -1,4 +1,4 @@
-# ReviewKit — CodeRabbit-style GitHub PR reviewer
+# DifFox — CodeRabbit-style GitHub PR reviewer
 
 Sign in → configure AI provider → install the GitHub App → open a PR → get an automatic
 summary plus actionable inline comments. Pushes re-review incrementally.
@@ -43,7 +43,7 @@ or two services sharing a database (see `docker-compose.yml`).
 Without GitHub, exercise the real pipeline end-to-end:
 
 ```bash
-REVIEWKIT_LOCAL_TEST=1 npm run worker   # in one terminal
+DIFFOX_LOCAL_TEST=1 npm run worker   # in one terminal
 # in another: npm run dev, sign in, save an AI key (or skip it for a canned result)
 curl -X POST http://localhost:3000/api/test/local-review \
   -H 'Content-Type: application/json' \
@@ -54,7 +54,7 @@ curl -X POST http://localhost:3000/api/test/local-review \
 The worker runs the model pipeline on the fixture (or a canned result with no key)
 and persists findings. Every simulated summary starts with
 `[SIMULATED — local test mode, not a real GitHub review]`. **Never present simulated
-reviews as real GitHub results.** The endpoint 404s unless `REVIEWKIT_LOCAL_TEST=1`.
+reviews as real GitHub results.** The endpoint 404s unless `DIFFOX_LOCAL_TEST=1`.
 
 A deliberate-bug fixture for end-to-end testing lives in `docs/e2e-test.md`.
 
@@ -69,7 +69,7 @@ See `.env.example` for every variable:
 | Key encryption | `ENCRYPTION_SECRET` (passphrase, 32+ chars) |
 | GitHub App | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_APP_SLUG` |
 | AI endpoint (server-controlled) | `AI_PROVIDER_BASE_URL` (default OpenCode Zen, OpenAI-compatible) |
-| Local test mode | `REVIEWKIT_LOCAL_TEST=1` (simulated reviews only) |
+| Local test mode | `DIFFOX_LOCAL_TEST=1` (simulated reviews only) |
 
 Setup guides: `docs/ai-providers.md`, `docs/github-app.md`, `docs/e2e-test.md` (Phase 5).
 

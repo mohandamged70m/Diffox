@@ -12,7 +12,7 @@ const Body = z.object({
 });
 
 /**
- * LOCAL TEST MODE ONLY (REVIEWKIT_LOCAL_TEST=1).
+ * LOCAL TEST MODE ONLY (DIFFOX_LOCAL_TEST=1).
  * Enqueues a simulated review of a pasted diff — exercises the real worker
  * pipeline (AI call, validation, dedupe, persistence) without GitHub.
  * Results are always labeled [SIMULATED] and must never be presented as real

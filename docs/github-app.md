@@ -1,13 +1,13 @@
 # GitHub App registration
 
-ReviewKit reviews PRs through a **GitHub App** you own. The app needs only three
+DifFox reviews PRs through a **GitHub App** you own. The app needs only three
 permissions and subscribes to three events.
 
 ## 1. Create the App
 
 1. On GitHub: **Settings → Developer settings → GitHub Apps → New GitHub App**.
-2. **GitHub App name:** e.g. `reviewkit-<yourname>` (must be globally unique).
-3. **Homepage URL:** your deployment URL, e.g. `https://reviewkit.example.com`.
+2. **GitHub App name:** e.g. `diffox-<yourname>` (must be globally unique).
+3. **Homepage URL:** your deployment URL, e.g. `https://diffox.example.com`.
 4. **Webhook URL:** `https://<your-host>/api/webhooks/github` (must be public HTTPS).
 5. **Webhook secret:** generate a strong random value (`openssl rand -hex 32`) — this becomes `GITHUB_WEBHOOK_SECRET`.
 6. **Setup URL (optional but recommended):** `https://<your-host>/settings` — GitHub redirects here with `installation_id` after install, and the Settings page picks it up for one-click connect.
@@ -21,20 +21,20 @@ permissions and subscribes to three events.
 10. **Generate a private key** (bottom of the App page) → `GITHUB_APP_PRIVATE_KEY`
     (paste the PEM, multiline or base64-encoded single line).
 
-## 2. Configure ReviewKit
+## 2. Configure DifFox
 
 ```bash
 GITHUB_APP_ID=123456
 GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n..."
 GITHUB_WEBHOOK_SECRET=<secret from step 5>
-GITHUB_APP_SLUG=reviewkit-yourname
+GITHUB_APP_SLUG=diffox-yourname
 ```
 
 Restart the app + worker.
 
 ## 3. Install on repositories
 
-1. Sign in to ReviewKit → **Settings → GitHub connection → Install GitHub App**.
+1. Sign in to DifFox → **Settings → GitHub connection → Install GitHub App**.
 2. Choose **Only select repositories** and pick the repos to review.
 3. GitHub redirects back with an `installation_id`; paste it into **Verify & connect**.
    The server re-reads the installation and repository list from the GitHub API —

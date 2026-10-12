@@ -5,7 +5,7 @@ import { configuredFlags } from "@/lib/env";
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    service: "reviewkit",
+    service: "diffox",
     flags: configuredFlags(),
     time: new Date().toISOString(),
   });

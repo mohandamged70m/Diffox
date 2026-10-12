@@ -11,7 +11,7 @@ export default function SignUpPage() {
     <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
       <div className="w-full max-w-sm space-y-6 text-center">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-50">ReviewKit</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-50">DifFox</h1>
           <p className="mt-1 text-sm text-neutral-400">Automatic PR reviews with actionable inline comments.</p>
         </div>
         <SignUp routing="hash" />

@@ -5,7 +5,7 @@ For a no-GitHub dry run, use the local-test variant at the bottom.
 
 ## Prerequisites
 
-- ReviewKit deployed with public HTTPS (webhook must reach `/api/webhooks/github`).
+- DifFox deployed with public HTTPS (webhook must reach `/api/webhooks/github`).
 - Clerk + Supabase configured, migration `0001_init.sql` applied.
 - AI key saved in Settings, GitHub App installed on a **test repository**.
 
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 }
 ```
 
-Expected ReviewKit findings (any model should catch at least the SQL injection):
+Expected DifFox findings (any model should catch at least the SQL injection):
 
 1. **SQL injection** (critical/high) — string-interpolated query; suggest parameterized queries.
 2. **Missing authorization** (high) — `userId` taken from the body; suggest session-derived identity.
@@ -42,7 +42,7 @@ Expected ReviewKit findings (any model should catch at least the SQL injection):
 
 ## Pass criteria
 
-- Exactly one GitHub review per head SHA (check the `<!-- reviewkit:<id> -->` marker).
+- Exactly one GitHub review per head SHA (check the `<!-- diffox:<id> -->` marker).
 - Inline comments attach only to diff lines; anything else lands in the summary.
 - Skipped files (if any) are listed, never silent.
 - No approval, request-changes, or merge action by the bot.
@@ -56,7 +56,7 @@ its marker instead of posting a duplicate.
 ## Local-test variant (no GitHub)
 
 ```bash
-REVIEWKIT_LOCAL_TEST=1 npm run worker
+DIFFOX_LOCAL_TEST=1 npm run worker
 ```
 
 ```bash

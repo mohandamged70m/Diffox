@@ -1,4 +1,4 @@
--- ReviewKit MVP schema (Supabase Postgres).
+-- DifFox MVP schema (Supabase Postgres).
 -- Run: supabase db push, or paste into the Supabase SQL editor.
 -- All privileged access uses the service-role key server-side.
 -- RLS is enabled with owner-only policies as defense-in-depth.

@@ -1,5 +1,5 @@
 /**
- * ReviewKit review worker — separate Node.js process with a durable Postgres queue.
+ * DifFox review worker — separate Node.js process with a durable Postgres queue.
  *
  * Run:  npm run worker   (requires Supabase + GitHub App + AI key configured)
  *
@@ -17,7 +17,7 @@
  *  3. Retries with a lease + bounded attempts; retries reconcile already-posted
  *     reviews via a hidden marker so a crash never creates duplicate feedback.
  *
- * Local test mode (REVIEWKIT_LOCAL_TEST=1): processes jobs with a canned
+ * Local test mode (DIFFOX_LOCAL_TEST=1): processes jobs with a canned
  * SIMULATED result and never touches GitHub. Simulated reviews are always
  * labeled and must never be presented as real GitHub results.
  */
@@ -50,7 +50,7 @@ function db() {
 }
 
 function isLocalTest(): boolean {
-  return process.env.REVIEWKIT_LOCAL_TEST === "1";
+  return process.env.DIFFOX_LOCAL_TEST === "1";
 }
 
 interface Job {
@@ -484,7 +484,7 @@ async function supersedeBoth(supabase: ReturnType<typeof db>, job: Job, reviewId
 }
 
 async function main() {
-  console.log(`[${WORKER_ID}] ReviewKit worker polling every ${POLL_MS}ms (localTest=${isLocalTest()})`);
+  console.log(`[${WORKER_ID}] DifFox worker polling every ${POLL_MS}ms (localTest=${isLocalTest()})`);
   const supabase = db();
   for (;;) {
     try {

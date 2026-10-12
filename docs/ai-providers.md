@@ -1,6 +1,6 @@
 # AI provider setup
 
-ReviewKit reviews with **one OpenAI-compatible provider** in this MVP. You bring your own
+DifFox reviews with **one OpenAI-compatible provider** in this MVP. You bring your own
 key and model — no free or unlimited model usage is included or promised.
 
 ## How it works

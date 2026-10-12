@@ -61,7 +61,7 @@ export default async function SettingsPage() {
         <AiKeyForm hasKey={ai.configured} encryptionReady={flags.encryption} providerEndpoint={providerBaseURL()} />
       </Section>
 
-      <Section title="GitHub connection" desc="Install the ReviewKit GitHub App on selected repositories (Contents: read, Pull requests: read & write, Metadata: read).">
+      <Section title="GitHub connection" desc="Install the DifFox GitHub App on selected repositories (Contents: read, Pull requests: read & write, Metadata: read).">
         {installations?.length ? (
           <ul className="mb-4 space-y-1 text-sm">
             {installations.map((i) => (

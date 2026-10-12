@@ -1,10 +1,10 @@
 /** Pure review-publishing helpers (shared by the worker; unit-tested). */
 
 export function reviewMarker(reviewId: string): string {
-  return `<!-- reviewkit:${reviewId} -->`;
+  return `<!-- diffox:${reviewId} -->`;
 }
 
-/** Find a previously posted ReviewKit review body by its hidden marker (crash-retry reconciliation). */
+/** Find a previously posted DifFox review body by its hidden marker (crash-retry reconciliation). */
 export function findPostedReviewId(
   reviews: { id: number; body?: string | null }[],
   reviewId: string
@@ -31,7 +31,7 @@ export function summaryBody(o: SummaryInput): string {
   const lines: string[] = [
     reviewMarker(o.reviewId),
     ...(o.simulated ? ["**[SIMULATED — local test mode, not a real review]**"] : []),
-    `ReviewKit ${o.mode} review of \`${o.headSha.slice(0, 7)}\``,
+    `DifFox ${o.mode} review of \`${o.headSha.slice(0, 7)}\``,
     "",
     o.summary,
     "",

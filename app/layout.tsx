@@ -3,7 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ReviewKit — AI PR Reviews",
+  title: "DifFox — AI PR Reviews",
   description: "CodeRabbit-style GitHub PR reviewer. Automatic summary plus actionable inline comments.",
 };
 
