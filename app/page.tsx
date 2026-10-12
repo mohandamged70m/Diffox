@@ -1,9 +1,12 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { resolveSession } from "@/lib/session";
+import { configuredFlags } from "@/lib/env";
 
-export default function RootPage() {
-  const id = cookies().get("diffox_session")?.value;
-  const s = resolveSession(id);
-  redirect(s ? "/dashboard" : "/setup");
+export const dynamic = "force-dynamic";
+
+export default async function RootPage() {
+  // No credentials → show setup guidance instead of crashing on Clerk.
+  if (!configuredFlags().clerk) redirect("/sign-in");
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId } = await auth();
+  redirect(userId ? "/overview" : "/sign-in");
 }
