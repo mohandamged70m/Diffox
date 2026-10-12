@@ -8,6 +8,19 @@ export function normalizeBaseURL(raw: string): string {
   return (raw || "").trim().replace(/\/+$/, "");
 }
 
+/**
+ * Provider-specific model ID cleanup. Google's OpenAI-compat layer expects bare
+ * IDs (gemini-2.5-flash) and rejects native resource names (models/gemini-2.5-flash)
+ * with "unexpected model name format", so strip that prefix for google-aistudio.
+ */
+export function normalizeModelId(provider: string, model: string): string {
+  let m = (model || "").trim();
+  if (provider === "google-aistudio") {
+    m = m.replace(/^models\//i, "");
+  }
+  return m;
+}
+
 export function providerError(status: number, message: string, code?: string): ProviderError {
   const e = new Error(message) as ProviderError;
   e.status = status;

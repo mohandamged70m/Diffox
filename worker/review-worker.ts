@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { chatCompletion, withBackoff } from "../lib/providers/openai-compatible";
-import { classifyError } from "../lib/providers/types";
+import { classifyError, normalizeModelId } from "../lib/providers/types";
 import { buildReviewMessages } from "../lib/review/prompt";
 import { parseReviewOutput } from "../lib/review/schema";
 import { parseDiff, verifyRef } from "../lib/diff/parse";
@@ -80,7 +80,7 @@ async function processOne(): Promise<boolean> {
       instructions: [prefs, review.instructions].filter(Boolean).join("\n\n") || null,
     });
     const raw = await withBackoff(
-      () => chatCompletion({ baseURL: session.baseURL, apiKey: session.apiKey, model: review.model || session.model }, messages, { maxTokens: 4000 }),
+      () => chatCompletion({ baseURL: session.baseURL, apiKey: session.apiKey, model: normalizeModelId(session.provider, review.model || session.model) }, messages, { maxTokens: 4000 }),
       3
     );
     let parsed;

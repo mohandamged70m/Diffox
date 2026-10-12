@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createSession, maskKey, sessionCookieName, OWNER_ID } from "@/lib/session";
-import { normalizeBaseURL, classifyError } from "@/lib/providers/types";
+import { normalizeBaseURL, normalizeModelId, classifyError } from "@/lib/providers/types";
 import { testConnection } from "@/lib/providers/openai-compatible";
 import { persistentSupported, saveVault } from "@/lib/vault";
 
@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Missing or invalid fields (baseURL, apiKey, model required)." }, { status: 400 });
   }
-  const { provider, apiKey, model, remember } = parsed.data;
+  const { provider, apiKey, remember } = parsed.data;
+  const model = normalizeModelId(provider, parsed.data.model);
   let baseURL = normalizeBaseURL(parsed.data.baseURL);
   if (!baseURL) baseURL = PROVIDER_DEFAULTS[provider] || "";
   try {
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { models } = await testConnection({ baseURL, apiKey, model });
-    if (models.length > 0 && !models.includes(model)) {
+    if (models.length > 0 && !models.includes(model) && !models.map((m) => normalizeModelId(provider, m)).includes(model)) {
       return NextResponse.json(
         { error: `Model “${model}” was not found for this key. Available examples: ${models.slice(0, 8).join(", ")}${models.length > 8 ? "…" : ""}. Nothing was saved.` },
         { status: 404 }
@@ -72,6 +73,14 @@ export async function POST(req: NextRequest) {
     return res;
   } catch (e) {
     const c = classifyError(e);
+    // Google returns 400 INVALID_ARGUMENT "unexpected model name format" when the
+    // ID has a models/ prefix or is otherwise malformed — translate it into guidance.
+    if (/unexpected model name format/i.test(c.message)) {
+      return NextResponse.json(
+        { error: "Google rejected the model name format. Use a bare ID like gemini-2.5-flash (no “models/” prefix). Nothing was saved.", kind: "model" },
+        { status: 400 }
+      );
+    }
     const status = c.status ?? (c.kind === "auth" ? 401 : c.kind === "ratelimit" ? 429 : 502);
     // Never include the key in the response or logs.
     return NextResponse.json({ error: c.message, kind: c.kind }, { status });

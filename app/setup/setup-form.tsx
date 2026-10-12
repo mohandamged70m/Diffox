@@ -88,7 +88,7 @@ export function SetupForm() {
           <Label htmlFor="key">API key</Label>
           <div className="relative">
             <Input id="key" type={show ? "text" : "password"} value={apiKey} onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-…" autoComplete="off" className="pr-10" />
+              placeholder={provider === "google-aistudio" ? "AIza… (AI Studio API key)" : "sk-…"} autoComplete="off" className="pr-10" />
             <button type="button" onClick={() => setShow(!show)} aria-label={show ? "Hide key" : "Show key"}
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-neutral-400 hover:text-neutral-100">
               {show ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -98,7 +98,7 @@ export function SetupForm() {
         <div>
           <Label htmlFor="model">Model ID</Label>
           <Input id="model" value={model} onChange={(e) => setModel(e.target.value)}
-            placeholder="e.g. your-zen-model-id" autoComplete="off" list="diffox-models" />
+            placeholder={provider === "google-aistudio" ? "e.g. gemini-2.5-flash (no models/ prefix)" : "e.g. your-model-id"} autoComplete="off" list="diffox-models" />
           <datalist id="diffox-models">{models.map((m) => <option key={m} value={m} />)}</datalist>
           <p className="mt-1 text-xs text-neutral-500">No model is assumed. Use “Test connection” to confirm your key can access this model.</p>
         </div>
