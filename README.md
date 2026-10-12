@@ -39,6 +39,12 @@ Open the app → you see **AI setup first**. Enter provider, base URL, key, mode
   (`data/sessions.json`) tied to an `HttpOnly; SameSite=Lax` cookie (`diffox_session`).
   Closing the browser drops the cookie; restarting the server with a fresh store requires setup again.
   The browser only ever receives connection status + a masked indicator (`••••1234`).
+- **Portable sessions for multi-instance hosting.** When `ENCRYPTION_SECRET` is configured,
+  setup also issues an AES-256-GCM-encrypted session bundle inside the HttpOnly cookie
+  (never plaintext in the browser). Any instance holding the secret can open it, so the
+  dashboard works across serverless instances. Without the secret, sessions are file-backed
+  and single-instance only — completing setup on serverless then bouncing back to it means
+  the secret is missing.
 - **Optional “Remember my key”:** AES-256-GCM encrypts the key with `ENCRYPTION_SECRET`
   into `data/vault.json`, scoped to the single local owner. If `ENCRYPTION_SECRET` (< 32 chars
   or missing) is not set, the checkbox is disabled by both API and UI.

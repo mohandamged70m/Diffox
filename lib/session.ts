@@ -33,6 +33,7 @@ export function maskKey(key: string): string {
 import fs from "node:fs";
 import path from "node:path";
 import { dataDir, ensureDataDir } from "./db";
+import { persistentSupported, encryptString, decryptString, b64urlEncode, b64urlDecode } from "./crypto";
 
 function sessionsPath() {
   return path.join(dataDir(), "sessions.json");
@@ -95,6 +96,64 @@ export function deleteSession(id: string) {
   const all = readSessions();
   delete all[id];
   writeSessions(all);
+}
+
+export function isStatelessToken(token: string | undefined | null): boolean {
+  return !!token && token.startsWith("enc_");
+}
+
+interface StatelessPayload {
+  v: 1;
+  jti: string;
+  provider: string;
+  baseURL: string;
+  model: string;
+  apiKey: string;
+  masked: string;
+  remember: boolean;
+  createdAt: string;
+}
+
+/**
+ * Portable session: the credential bundle AES-256-GCM-encrypted with
+ * ENCRYPTION_SECRET and carried inside the HttpOnly cookie value. The key is
+ * never in the browser in plaintext, and any instance holding the secret can
+ * open it — required for multi-instance/serverless hosting, where the
+ * file-backed session store does not travel across instances.
+ */
+export function sealSessionCookie(s: Omit<StatelessPayload, "v" | "jti">): string {
+  const payload: StatelessPayload = { ...s, v: 1, jti: newId("") };
+  return "enc_" + b64urlEncode(JSON.stringify(encryptString(JSON.stringify(payload))));
+}
+
+export function openSessionCookie(token: string | undefined | null): ServerSession | null {
+  try {
+    if (!isStatelessToken(token)) return null;
+    const enc = JSON.parse(b64urlDecode(token!.slice(4))) as { iv: string; tag: string; data: string };
+    const payload = JSON.parse(decryptString(enc)) as StatelessPayload;
+    if (payload.v !== 1 || !payload.apiKey || !payload.baseURL || !payload.model) return null;
+    return {
+      id: `stateless-${payload.jti}`,
+      ownerId: OWNER_ID,
+      provider: payload.provider,
+      baseURL: payload.baseURL,
+      model: payload.model,
+      apiKey: payload.apiKey,
+      masked: payload.masked,
+      remember: payload.remember,
+      createdAt: payload.createdAt,
+      lastSeen: new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** File-backed session first, portable encrypted cookie second. */
+export function resolveSession(token: string | undefined | null): ServerSession | null {
+  if (!token) return null;
+  if (isStatelessToken(token)) return openSessionCookie(token);
+  return getSession(token);
 }
 
 export function parseCookies(header: string | null): Record<string, string> {

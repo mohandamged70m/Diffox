@@ -2,6 +2,7 @@
 import { parseDiff, verifyRef } from "../lib/diff/parse";
 import { extractJson, parseReviewOutput } from "../lib/review/schema";
 import { classifyError } from "../lib/providers/types";
+import { sealSessionCookie, openSessionCookie } from "../lib/session";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -34,6 +35,18 @@ check("schema parses fenced JSON, rejects garbage", () => {
   let threw = false;
   try { parseReviewOutput("not json"); } catch { threw = true; }
   assert(threw, "garbage must throw");
+});
+
+check("stateless session seal/open round-trips, wrong secret fails", () => {
+  process.env.ENCRYPTION_SECRET = "0123456789abcdef0123456789abcdef";
+  const token = sealSessionCookie({ provider: "custom", baseURL: "http://x/v1", model: "m", apiKey: "sk-secret-1234", masked: "••••1234", remember: false, createdAt: new Date().toISOString() });
+  assert(token.startsWith("enc_"), "token prefix");
+  const s = openSessionCookie(token);
+  assert(s && s.apiKey === "sk-secret-1234" && s.model === "m", "round-trip");
+  assert(openSessionCookie(token + "tamper") === null, "tampered must fail");
+  process.env.ENCRYPTION_SECRET = "wrong-secret-wrong-secret-wrong!!";
+  assert(openSessionCookie(token) === null, "wrong secret must fail");
+  delete process.env.ENCRYPTION_SECRET;
 });
 
 check("error classifier distinguishes auth/ratelimit/network", () => {

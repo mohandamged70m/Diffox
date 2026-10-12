@@ -1,13 +1,13 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+import { resolveSession } from "@/lib/session";
 import { storageStatus } from "@/lib/db";
 import { Sidebar, MobileNav } from "@/components/sidebar";
 import { Alert } from "@/components/ui/primitives";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const id = cookies().get("diffox_session")?.value;
-  if (!getSession(id)) redirect("/setup");
+  if (!resolveSession(id)) redirect("/setup");
   const storage = storageStatus();
   return (
     <div className="flex min-h-screen">

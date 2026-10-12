@@ -62,11 +62,19 @@ export async function POST(req: NextRequest) {
       ownerId: OWNER_ID, provider, baseURL, model, apiKey, masked: maskKey(apiKey), remember,
     });
     if (remember) {
-      const { encryptString } = await import("@/lib/vault");
+      const { encryptString } = await import("@/lib/crypto");
       saveVault({ provider, baseURL, model, payload: encryptString(apiKey) });
     }
+    // Cookie value: portable encrypted bundle when a server secret is configured
+    // (works across instances/serverless), otherwise the file-session id.
+    // The file session is always created too, so the worker can use it.
+    const { persistentSupported } = await import("@/lib/crypto");
+    const { sealSessionCookie } = await import("@/lib/session");
+    const cookieValue = persistentSupported()
+      ? sealSessionCookie({ provider, baseURL, model, apiKey, masked: session.masked, remember, createdAt: session.createdAt })
+      : session.id;
     const res = NextResponse.json({ ok: true, masked: session.masked, models: models.slice(0, 50), provider, baseURL, model });
-    const attrs = [`${sessionCookieName}=${encodeURIComponent(session.id)}`, "Path=/", "HttpOnly", "SameSite=Lax"];
+    const attrs = [`${sessionCookieName}=${encodeURIComponent(cookieValue)}`, "Path=/", "HttpOnly", "SameSite=Lax"];
     if (process.env.NODE_ENV === "production") attrs.push("Secure");
     if (remember) attrs.push(`Max-Age=${60 * 60 * 24 * 30}`);
     res.headers.set("Set-Cookie", attrs.join("; "));
