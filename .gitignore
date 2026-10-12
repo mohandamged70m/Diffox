@@ -5,3 +5,7 @@ data/
 .env
 .env.local
 *.log
+
+# build artifacts
+tsconfig.tsbuildinfo
+next-env.d.ts

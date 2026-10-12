@@ -5,6 +5,8 @@ import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { GitCompare, LayoutDashboard, History, FolderGit2, Settings } from "lucide-react";
 
+const AUTH_UI = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
 const NAV = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/reviews", label: "Reviews", icon: History, exact: false },
@@ -35,7 +37,7 @@ export function Sidebar() {
       </nav>
       <div className="mt-auto flex items-center justify-between px-5 py-4">
         <p className="text-[11px] leading-relaxed text-neutral-600">Automatic PR reviews.</p>
-        <UserButton />
+        {AUTH_UI && <UserButton />}
       </div>
     </aside>
   );
@@ -49,7 +51,7 @@ export function MobileNav() {
         const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
         return <Link key={n.href} href={n.href} className={cn("whitespace-nowrap rounded-md px-3 py-1.5 text-sm", active ? "bg-neutral-900 text-neutral-50" : "text-neutral-400")}>{n.label}</Link>;
       })}
-      <span className="ml-auto"><UserButton /></span>
+      <span className="ml-auto">{AUTH_UI && <UserButton />}</span>
     </nav>
   );
 }

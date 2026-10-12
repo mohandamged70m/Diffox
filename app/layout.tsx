@@ -8,11 +8,14 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const body = <body className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">{children}</body>;
+  // Without keys the app still boots and pages show honest "not configured" states.
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+    return <html lang="en" className="dark">{body}</html>;
+  }
   return (
-    <ClerkProvider>
-      <html lang="en" className="dark">
-        <body className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">{children}</body>
-      </html>
-    </ClerkProvider>
+    <html lang="en" className="dark">
+      <ClerkProvider>{body}</ClerkProvider>
+    </html>
   );
 }

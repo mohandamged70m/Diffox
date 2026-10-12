@@ -27,10 +27,4 @@ export async function requireAccount(): Promise<Account> {
 }
 
 /** Scope check: does this account own the row's account_id? */
-export function assertOwns(accountId: string, rowAccountId: string) {
-  if (accountId !== rowAccountId) {
-    const err = new Error("Not found.") as Error & { status?: number };
-    err.status = 404; // deliberately 404 to avoid leaking cross-account existence
-    throw err;
-  }
-}
+export { assertOwns } from "./ownership";

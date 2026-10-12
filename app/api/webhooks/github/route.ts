@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyWebhookSignature } from "@/lib/github/webhook";
+import { buildDedupeKey } from "@/lib/github/publish";
 import { supabaseService, supabaseConfigured } from "@/lib/supabase/server";
 import { getAiConfigStatus } from "@/lib/ai-config";
 
@@ -186,7 +187,7 @@ async function enqueueForAccount(
   const prevHeadSha = lastDone?.head_sha && lastDone.head_sha !== headSha ? lastDone.head_sha : null;
 
   // Idempotency: same repo + PR + SHA (+ account) enqueues exactly once.
-  const dedupeKey = `${accountId}:${repo.full_name}#${pr.number}@${headSha}`;
+  const dedupeKey = buildDedupeKey(accountId, repo.full_name, pr.number, headSha);
   const { data: review } = await db
     .from("reviews")
     .insert({

@@ -25,14 +25,16 @@ import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { Octokit } from "octokit";
 import { chatCompletion, withBackoff } from "../lib/providers/openai-compatible";
-import { classifyError } from "../lib/providers/types";
+import { classifyError, normalizeModelId } from "../lib/providers/types";
 import { buildReviewMessages } from "../lib/review/prompt";
 import { parseReviewOutput } from "../lib/review/schema";
 import { classifyFile } from "../lib/review/filter";
 import { parseDiffSides, mapToInlinePosition, dedupeFindings } from "../lib/github/positions";
+import { summaryBody, classifyHeadState, findPostedReviewId } from "../lib/github/publish";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS || 5000);
 const LEASE_MS = 10 * 60 * 1000;
+const MAX_ATTEMPTS = 4; // must match review_jobs.max_attempts default (migration 0001)
 const MAX_BATCH_CHARS = 48_000;
 const MAX_CONTEXT_FILES_PER_BATCH = 4;
 const MAX_CONTEXT_CHARS = 15_000;
@@ -63,7 +65,7 @@ async function claimJob(supabase: ReturnType<typeof db>): Promise<Job | null> {
     .from("review_jobs")
     .select("id")
     .or(`status.eq.queued,and(status.eq.running,lease_expires_at.lt.${new Date().toISOString()})`)
-    .lt("attempts", 4)
+    .lt("attempts", MAX_ATTEMPTS)
     .order("created_at", { ascending: true })
     .limit(3);
   if (!candidates?.length) return null;
@@ -95,7 +97,7 @@ async function sweepExhausted(supabase: ReturnType<typeof db>) {
     .select("id, review_id")
     .eq("status", "running")
     .lt("lease_expires_at", new Date().toISOString())
-    .gte("attempts", 4);
+    .gte("attempts", MAX_ATTEMPTS);
   for (const j of stale || []) {
     await supabase.from("review_jobs").update({ status: "failed", last_error: "Worker crashed or timed out after max attempts.", updated_at: new Date().toISOString() }).eq("id", j.id);
     if (j.review_id) {
@@ -135,31 +137,6 @@ function sidesFromPatches(files: { filename: string; patch?: string }[]) {
   return parseDiffSides(diff);
 }
 
-function reviewMarker(reviewId: string): string {
-  return `<!-- reviewkit:${reviewId} -->`;
-}
-
-function summaryBody(opts: {
-  reviewId: string; summary: string; mode: string; headSha: string;
-  reviewed: { filename: string }[]; skipped: { path: string; reason: string }[];
-  unattached: { file: string | null; title: string; explanation: string; suggestion: string; severity: string }[];
-  incomplete: boolean; incompleteReason: string | null; simulated: boolean;
-}): string {
-  const lines = [
-    reviewMarker(opts.reviewId),
-    opts.simulated ? "**[SIMULATED — local test mode, not a real review]**" : null,
-    `ReviewKit ${opts.mode} review of \`${opts.headSha.slice(0, 7)}\``,
-    "",
-    opts.summary,
-    "",
-    `Files reviewed: ${opts.reviewed.length}. Skipped: ${opts.skipped.length}.`,
-    ...(opts.skipped.length ? ["", "**Skipped files**", ...opts.skipped.map((s) => `- \`${s.path}\` — ${s.reason}`)] : []),
-    ...(opts.unattached.length ? ["", "**Other findings (no exact diff location)**", ...opts.unattached.map((f) => `- **[${f.severity}]** ${f.file ? `\`${f.file}\` — ` : ""}${f.title}: ${f.explanation} Suggested fix: ${f.suggestion}`)] : []),
-    ...(opts.incomplete ? ["", `**Incomplete coverage:** ${opts.incompleteReason || "the model flagged this review as incomplete."} Treat a lack of findings as unknown, not clean.`] : []),
-  ].filter((l) => l !== null);
-  return lines.join("\n");
-}
-
 async function processJob(supabase: ReturnType<typeof db>, job: Job) {
   const { data: review } = await supabase.from("reviews").select("*").eq("id", job.review_id).maybeSingle();
   if (!review) {
@@ -188,7 +165,7 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
       await skipBoth(supabase, job, review.id, "Automatic review is disabled for this repository.");
       return;
     }
-    const { data: aiRow } = await supabase.from("ai_configs").select("model, key_enc").eq("account_id", job.account_id).maybeSingle();
+    const { data: aiRow } = await supabase.from("ai_configs").select("provider, model, key_enc").eq("account_id", job.account_id).maybeSingle();
     if (!aiRow) {
       await skipBoth(supabase, job, review.id, "AI key not configured.");
       return;
@@ -205,21 +182,22 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
     const octo = new Octokit({ auth: token });
     const { owner, repo } = parseRepo(job.repo_full_name);
 
-    // Fetch PR + verify expected head SHA.
+    // Fetch PR + verify expected head SHA (also re-checked before publishing).
     const { data: pr } = await octo.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
       owner, repo, pull_number: job.pr_number,
     });
-    if (pr.state === "closed") {
-      await skipBoth(supabase, job, review.id, "PR was closed before review.");
-      return;
-    }
-    if (pr.draft) {
-      await skipBoth(supabase, job, review.id, "PR is a draft.");
-      return;
-    }
-    if (pr.head.sha !== job.head_sha) {
-      await supersedeBoth(supabase, job, review.id, `PR head moved (${job.head_sha.slice(0, 7)} → ${pr.head.sha.slice(0, 7)}); a newer job owns this PR.`);
-      return;
+    switch (classifyHeadState({ state: pr.state, draft: pr.draft ?? false, headSha: pr.head.sha }, job.head_sha)) {
+      case "closed":
+        await skipBoth(supabase, job, review.id, "PR was closed before review.");
+        return;
+      case "draft":
+        await skipBoth(supabase, job, review.id, "PR is a draft.");
+        return;
+      case "stale":
+        await supersedeBoth(supabase, job, review.id, `PR head moved (${job.head_sha.slice(0, 7)} → ${pr.head.sha.slice(0, 7)}); a newer job owns this PR.`);
+        return;
+      case "ok":
+        break;
     }
 
     // Changed files with pagination.
@@ -317,7 +295,7 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
         context: contextParts.join("\n\n").slice(0, 40_000) || null, instructions: null,
       });
       const raw = await withBackoff(
-        () => chatCompletion({ baseURL, apiKey, model: aiRow.model }, messages, { maxTokens: 4000 }),
+        () => chatCompletion({ baseURL, apiKey, model: normalizeModelId(aiRow.provider, aiRow.model) }, messages, { maxTokens: 4000 }),
         3
       );
       let parsed;
@@ -351,13 +329,18 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
     const { data: pr2 } = await octo.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
       owner, repo, pull_number: job.pr_number,
     });
-    if (pr2.state === "closed") {
-      await skipBoth(supabase, job, review.id, "PR was closed before publishing.");
-      return;
-    }
-    if (pr2.head.sha !== job.head_sha) {
-      await supersedeBoth(supabase, job, review.id, "PR head moved before publishing; a newer job owns this PR.");
-      return;
+    switch (classifyHeadState({ state: pr2.state, draft: pr2.draft ?? false, headSha: pr2.head.sha }, job.head_sha)) {
+      case "closed":
+        await skipBoth(supabase, job, review.id, "PR was closed before publishing.");
+        return;
+      case "draft":
+        await skipBoth(supabase, job, review.id, "PR became a draft before publishing.");
+        return;
+      case "stale":
+        await supersedeBoth(supabase, job, review.id, "PR head moved before publishing; a newer job owns this PR.");
+        return;
+      case "ok":
+        break;
     }
 
     // Reconcile: adopt an already-posted review (same marker) instead of double-posting.
@@ -366,8 +349,7 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
       const existing = await octo.request("GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews", {
         owner, repo, pull_number: job.pr_number, per_page: 100,
       });
-      const hit = (existing.data as { id: number; body?: string }[]).find((r) => r.body?.includes(reviewMarker(review.id)));
-      if (hit) githubReviewId = hit.id;
+      githubReviewId = findPostedReviewId(existing.data as { id: number; body?: string }[], review.id);
     }
     const summary = batchSummaries.join("\n\n").slice(0, 6000);
     if (!githubReviewId) {

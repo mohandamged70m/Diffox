@@ -10,6 +10,7 @@ permissions and subscribes to three events.
 3. **Homepage URL:** your deployment URL, e.g. `https://reviewkit.example.com`.
 4. **Webhook URL:** `https://<your-host>/api/webhooks/github` (must be public HTTPS).
 5. **Webhook secret:** generate a strong random value (`openssl rand -hex 32`) — this becomes `GITHUB_WEBHOOK_SECRET`.
+6. **Setup URL (optional but recommended):** `https://<your-host>/settings` — GitHub redirects here with `installation_id` after install, and the Settings page picks it up for one-click connect.
 6. Permissions:
    - **Contents:** Read-only (fetch PR diffs and surrounding code)
    - **Pull requests:** Read & write (read PR metadata, post review comments)
