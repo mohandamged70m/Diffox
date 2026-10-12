@@ -14,7 +14,7 @@ export function githubAppConfigured(): boolean {
   );
 }
 
-function appOctokit(): InstanceType<typeof Octokit> {
+export function appOctokit(): InstanceType<typeof Octokit> {
   const appId = process.env.GITHUB_APP_ID;
   let privateKey = process.env.GITHUB_APP_PRIVATE_KEY || "";
   if (!appId || !privateKey) throw new Error("GitHub App is not configured.");
