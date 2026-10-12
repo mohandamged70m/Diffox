@@ -1,0 +1,23 @@
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?Set ENCRYPTION_SECRET in .env to enable "Remember my key"}
+    volumes:
+      - diffox-data:/data
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["npm", "run", "worker"]
+    environment:
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-}
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-2000}
+    volumes:
+      - diffox-data:/data
+    restart: unless-stopped
+
+volumes:
+  diffox-data:

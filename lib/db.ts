@@ -2,11 +2,38 @@ import fs from "node:fs";
 import path from "node:path";
 
 export function dataDir(): string {
-  return process.env.DATA_DIR || path.join(process.cwd(), "data");
+  if (process.env.DATA_DIR) return process.env.DATA_DIR;
+  // Serverless platforms (Vercel, AWS Lambda) mount the app read-only (/var/task).
+  // Only /tmp is writable there — ephemeral and per-instance. Prefer self-hosting
+  // (Docker/VPS) for durable storage; see README "Deployment".
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join("/tmp", "diffox-data");
+  }
+  return path.join(process.cwd(), "data");
+}
+
+export function storageStatus(): { dir: string; writable: boolean; ephemeral: boolean } {
+  const dir = dataDir();
+  const ephemeral = dir.startsWith("/tmp");
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.accessSync(dir, fs.constants.W_OK);
+    return { dir, writable: true, ephemeral };
+  } catch {
+    return { dir, writable: false, ephemeral };
+  }
 }
 
 export function ensureDataDir() {
-  fs.mkdirSync(dataDir(), { recursive: true });
+  const st = storageStatus();
+  if (!st.writable) {
+    throw new Error(
+      `DiffFox storage unavailable: cannot write to ${st.dir}. ` +
+        `Set DATA_DIR to a writable directory. ` +
+        `Serverless filesystems (e.g. Vercel /var/task) are read-only — only /tmp is writable there, ` +
+        `and it is ephemeral. For durable sessions, review history, and the worker queue, self-host with Docker or a VPS (see README "Deployment").`
+    );
+  }
 }
 
 export type ReviewStatus = "queued" | "working" | "completed" | "failed";

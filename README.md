@@ -71,6 +71,22 @@ Open the app → you see **AI setup first**. Enter provider, base URL, key, mode
 - `npm run worker` — review worker (required for real reviews)
 - `npm run verify` — runs `scripts/verify.ts` checks (diff parser, schema, masked-key hygiene)
 
+## Deployment
+
+DiffFox keeps sessions, reviews, and the job queue in small JSON files (`DATA_DIR`,
+default `./data`) and processes reviews in a **separate worker process**. That shapes
+where it can run:
+
+| Target | Supported | Notes |
+|---|---|---|
+| VPS / home server (`npm run dev`, `npm start` + `npm run worker`) | Yes | Recommended. Persistent `./data`. |
+| Docker Compose (`docker compose up --build`) | Yes | Web + worker share the `diffox-data` volume. Set `ENCRYPTION_SECRET` in `.env` first. |
+| Vercel / serverless | Partial | The app dir (`/var/task`) is **read-only**, so `./data` fails with `ENOENT … mkdir`. On Vercel the app auto-falls back to `/tmp/diffox-data`, but that is **ephemeral** (sessions/history vanish, multi-instance unsafe) and the **worker cannot run there**, so reviews stay `queued` forever. Diagnose via unauthenticated `GET /api/health`. |
+
+If you saw `ENOENT: no such file or directory, mkdir '/var/task/data'`: that is Vercel's
+read-only filesystem. Either redeploy on a host with a writable disk (or set `DATA_DIR`
+to a mounted volume), or use Docker Compose above.
+
 ## What still needs configuration
 
 - **GitHub App integration:** Repositories/Settings show an honest “not configured” state.
