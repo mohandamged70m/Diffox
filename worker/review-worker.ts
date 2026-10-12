@@ -171,15 +171,9 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
     return; // already reconciled
   }
 
-  // ---- Local test mode: simulated result, no GitHub ----
+  // ---- Local test mode: no GitHub. Results always labeled SIMULATED. ----
   if (isLocalTest()) {
-    const summary = "[SIMULATED — local test mode, not a real GitHub review] Test finding pipeline OK.";
-    await supabase.from("reviews").update({
-      status: "completed", summary, incomplete: false, incomplete_reason: null,
-      skipped_files: [], error: null, completed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    }).eq("id", review.id);
-    await supabase.from("review_jobs").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", job.id);
-    console.log(`[${WORKER_ID}] simulated job ${job.id} completed`);
+    await runLocalFixture(supabase, job, review);
     return;
   }
 
@@ -425,6 +419,75 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
       await supabase.from("reviews").update({ status: "queued", updated_at: new Date().toISOString() }).eq("id", review.id);
     }
     console.error(`[${WORKER_ID}] job ${job.id} error: ${c.message}`);
+  }
+}
+
+/**
+ * Local test mode: run the REAL model pipeline on a pasted fixture diff
+ * (structured output, validation, dedupe, persistence) without GitHub.
+ * No AI config → canned pipeline-OK result. Everything is labeled SIMULATED.
+ */
+async function runLocalFixture(supabase: ReturnType<typeof db>, job: Job, review: { id: string; fixture_diff?: string | null }) {
+  const done = async (patch: Record<string, unknown>) => {
+    await supabase.from("reviews").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", review.id);
+    const status = typeof patch.status === "string" ? patch.status : "completed";
+    await supabase.from("review_jobs").update({ status, updated_at: new Date().toISOString() }).eq("id", job.id);
+  };
+  const fixture = (review.fixture_diff as string) || "";
+  const { data: aiRow } = await supabase.from("ai_configs").select("model, key_enc").eq("account_id", job.account_id).maybeSingle();
+  if (!fixture || !aiRow) {
+    await done({
+      status: "completed",
+      summary: "[SIMULATED — local test mode, not a real GitHub review] Job-claim → process → persist pipeline OK." + (fixture ? "" : " (No fixture diff attached.)") + (aiRow ? "" : " (No AI key configured — attach one in Settings to run the model pipeline locally.)"),
+      incomplete: false, incomplete_reason: null, skipped_files: [], error: null,
+      completed_at: new Date().toISOString(),
+    });
+    console.log(`[${WORKER_ID}] simulated job ${job.id} completed (canned)`);
+    return;
+  }
+  try {
+    const apiKey = await decryptConfig(aiRow.key_enc);
+    const baseURL = (process.env.AI_PROVIDER_BASE_URL || "https://opencode.ai/zen/v1").replace(/\/+$/, "");
+    const sides = parseDiffSides(fixture);
+    const raw = await withBackoff(
+      () => chatCompletion({ baseURL, apiKey, model: aiRow.model },
+        buildReviewMessages({ inputType: "diff", content: fixture.slice(0, 60_000), language: null, context: null, instructions: null }),
+        { maxTokens: 4000 }),
+      3
+    );
+    const parsed = parseReviewOutput(raw);
+    const deduped = dedupeFindings(parsed.findings.map((f) => ({
+      severity: f.severity, title: f.title, file: f.file ?? null, line: f.line ?? null,
+      explanation: f.explanation, suggestion: f.suggestion, evidence: f.excerpt ?? null,
+    })));
+    // Validate positions against the fixture diff (same rule as production: no fabrication).
+    const valid = deduped.filter((f) => {
+      if (!f.file) return true;
+      return mapToInlinePosition(sides, f.file, f.line).valid || f.line == null;
+    });
+    await supabase.from("findings").delete().eq("review_id", review.id);
+    if (valid.length) {
+      await supabase.from("findings").insert(valid.map((f) => ({
+        review_id: review.id, file: f.file, line: f.line, severity: f.severity,
+        title: f.title, explanation: f.explanation, suggestion: f.suggestion,
+        evidence: f.evidence, inline_posted: false,
+      })));
+    }
+    await done({
+      status: "completed",
+      summary: `[SIMULATED — local test mode, not a real GitHub review]\n\n${parsed.summary}`,
+      incomplete: parsed.incomplete, incomplete_reason: parsed.incomplete ? "Model flagged the fixture review as incomplete." : null,
+      skipped_files: [], error: null, completed_at: new Date().toISOString(),
+    });
+    console.log(`[${WORKER_ID}] simulated job ${job.id} completed via model (${valid.length} findings)`);
+  } catch (e) {
+    const c = classifyError(e);
+    if (job.attempts >= job.max_attempts) {
+      await done({ status: "failed", error: `[SIMULATED] ${c.message}` });
+    } else {
+      await supabase.from("review_jobs").update({ status: "queued", lease_expires_at: null, last_error: c.message }).eq("id", job.id);
+    }
+    console.error(`[${WORKER_ID}] simulated job ${job.id} error: ${c.message}`);
   }
 }
 

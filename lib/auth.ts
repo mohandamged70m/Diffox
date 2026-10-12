@@ -1,7 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "./supabase/server";
-import { resolveSession, parseCookies } from "./session";
 
 export interface Account {
   id: string;
@@ -35,17 +33,4 @@ export function assertOwns(accountId: string, rowAccountId: string) {
     err.status = 404; // deliberately 404 to avoid leaking cross-account existence
     throw err;
   }
-}
-
-/**
- * Legacy DiffFox cookie-session helper (kept until the old /dashboard routes are
- * removed in Phase 4). New code uses Clerk + requireAccount().
- */
-export function requireSession(req: NextRequest) {
-  const cookies = parseCookies(req.headers.get("cookie"));
-  const session = resolveSession(cookies["diffox_session"]);
-  if (!session) {
-    return { error: NextResponse.json({ error: "Not configured. Complete AI setup first." }, { status: 401 }) as NextResponse, session: null as null };
-  }
-  return { error: null as null, session };
 }

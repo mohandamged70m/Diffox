@@ -6,37 +6,61 @@ summary plus actionable inline comments. Pushes re-review incrementally.
 Next.js 14 (App Router) · TypeScript · Tailwind · Clerk (auth) · Supabase Postgres ·
 Octokit (GitHub App) · Zod · durable Postgres job queue + separate Node.js review worker.
 
-## Status
-
-Active build in phases (see below). The legacy single-user DiffFox file-store flow
-(`app/dashboard/*`, `lib/session.ts`) is being replaced route by route; new canonical
-routes are `/overview`, `/reviews`, `/repositories`, `/settings`.
-
-## Quick start (local, no credentials required to boot)
+## Quick start
 
 ```bash
 npm install
-cp .env.example .env   # fill as you go; app boots without keys and shows setup states
+cp .env.example .env   # fill as you go; the app boots without keys and shows setup states
 npm run dev            # app on http://localhost:3000
-npm run worker         # separate Node.js review worker (needs Supabase + AI key)
 ```
 
-## Phase plan
+Apply the database schema before first use: run
+`supabase/migrations/0001_init.sql` (and `0002_local_fixture.sql`) via
+`supabase db push` or the Supabase SQL editor. RLS is deny-by-default; all dashboard
+access goes through server routes that enforce Clerk ownership per row.
 
-1. **Foundation, auth, database** — Clerk, Supabase schema (`supabase/migrations/0001_init.sql`),
-   versioned AES-256-GCM crypto, new IA (`/overview`, `/reviews`, `/repositories`, `/settings`).
-2. **Encrypted AI settings + GitHub installation** — save/replace/test/delete key (never returned
-   to browser), installation flow with server-side authorization.
-3. **Webhook, durable jobs, worker, summary reviews** — HMAC-verified webhook, Postgres queue
-   with atomic claiming/leases/retries, worker publishes the summary review.
-4. **Inline comments, incremental reviews, dashboard** — diff-position mapping, new-SHA-only
-   reviews with fallback to full, completed dashboard pages.
-5. **Tests, checks, setup documentation** — webhook/encryption/dedupe/positions/stale-SHA tests,
-   GitHub App + provider setup docs, deliberate-bug end-to-end test.
+## Running the review worker
+
+Real reviews require the worker — a **separate Node.js process** (never Vercel serverless):
+
+```bash
+npm run worker   # polls review_jobs every WORKER_POLL_MS (default 5000)
+```
+
+The worker needs `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+`ENCRYPTION_SECRET`, the GitHub App variables, and an `AI_PROVIDER_BASE_URL`.
+It claims jobs atomically (conditional UPDATE on status/lease, so multiple workers
+never double-claim), holds a 10-minute lease, retries with bounded attempts (4),
+and reclaims stale leases after a crash. Failed jobs surface in Reviews with their
+error; retries reconcile already-posted GitHub reviews via a hidden marker, so a
+crash never creates duplicate feedback.
+
+Deploy as two processes sharing env: e.g. `npm start` + `npm run worker` on a VPS,
+or two services sharing a database (see `docker-compose.yml`).
+
+## Local test mode (simulated, clearly labeled)
+
+Without GitHub, exercise the real pipeline end-to-end:
+
+```bash
+REVIEWKIT_LOCAL_TEST=1 npm run worker   # in one terminal
+# in another: npm run dev, sign in, save an AI key (or skip it for a canned result)
+curl -X POST http://localhost:3000/api/test/local-review \
+  -H 'Content-Type: application/json' \
+  -H "Cookie: <your session cookie>" \
+  -d '{"repo_full_name":"local/demo","pr_number":1,"head_sha":"abc1234","diff":"...unified diff..."}'
+```
+
+The worker runs the model pipeline on the fixture (or a canned result with no key)
+and persists findings. Every simulated summary starts with
+`[SIMULATED — local test mode, not a real GitHub review]`. **Never present simulated
+reviews as real GitHub results.** The endpoint 404s unless `REVIEWKIT_LOCAL_TEST=1`.
+
+A deliberate-bug fixture for end-to-end testing lives in `docs/e2e-test.md`.
 
 ## Configuration
 
-See `.env.example` for every variable. In short:
+See `.env.example` for every variable:
 
 | Area | Variables |
 |---|---|
@@ -45,24 +69,12 @@ See `.env.example` for every variable. In short:
 | Key encryption | `ENCRYPTION_SECRET` (passphrase, 32+ chars) |
 | GitHub App | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_APP_SLUG` |
 | AI endpoint (server-controlled) | `AI_PROVIDER_BASE_URL` (default OpenCode Zen, OpenAI-compatible) |
-| Local test mode | `REVIEWKIT_LOCAL_TEST=1` (clearly-labeled simulated reviews only) |
+| Local test mode | `REVIEWKIT_LOCAL_TEST=1` (simulated reviews only) |
 
-Apply the database schema: `supabase/migrations/0001_init.sql` (via `supabase db push` or the
-SQL editor). RLS is deny-by-default; all dashboard access goes through server routes that
-enforce Clerk ownership per row.
-
-## AI providers
-
-One OpenAI-compatible provider in this MVP. The endpoint is server-controlled
-(`AI_PROVIDER_BASE_URL`); each account configures its own key + model in Settings.
-Repository code is sent to the configured provider for review — the Settings page says so
-explicitly. No free or unlimited usage is promised: you bring your own key and model.
-
-Details: `docs/ai-providers.md` (Phase 2). GitHub App registration: `docs/github-app.md` (Phase 2).
+Setup guides: `docs/ai-providers.md`, `docs/github-app.md`, `docs/e2e-test.md` (Phase 5).
 
 ## Scripts
 
 - `npm run dev` / `build` / `start` — app
 - `npm run worker` — review worker (separate process; required for real reviews)
-- `npm run verify` — legacy DiffFox checks (being migrated to vitest in Phase 5)
 - `npm test` — vitest suite (Phase 5)
