@@ -34,7 +34,7 @@ export default async function SettingsPage() {
   const db = supabaseService();
   const [ai, { data: installations }] = await Promise.all([
     getAiConfigStatus(account.id),
-    db.from("installations").select("installation_id, account_login").eq("account_id", account.id),
+    db.from("installations").select("installation_id, account_login, verified_at").eq("account_id", account.id),
   ]);
 
   return (
@@ -67,7 +67,7 @@ export default async function SettingsPage() {
             {installations.map((i) => (
               <li key={i.installation_id} className="flex items-center justify-between rounded-md border border-neutral-800 px-3 py-2">
                 <span><span className="font-medium">{i.account_login}</span> <span className="font-mono text-xs text-neutral-500">#{i.installation_id}</span></span>
-                <span className="text-xs text-emerald-300">connected</span>
+                <span className={i.verified_at ? "text-xs text-emerald-300" : "text-xs text-amber-300"}>{i.verified_at ? "connected" : "Reconnect to verify ownership"}</span>
               </li>
             ))}
           </ul>

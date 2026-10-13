@@ -20,8 +20,7 @@ export async function listModels(cfg: ProviderConfig): Promise<string[]> {
   const base = normalizeBaseURL(cfg.baseURL);
   const res = await req(`${base}/models`, cfg.apiKey, { method: "GET" });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw providerError(res.status, text.slice(0, 300) || `Models request failed (${res.status})`);
+    throw providerError(res.status, `Models request failed (${res.status}).`);
   }
   const json = (await res.json()) as { data?: { id: string }[] };
   return (json.data || []).map((m) => m.id).filter(Boolean);
@@ -55,8 +54,7 @@ export async function testConnection(cfg: ProviderConfig): Promise<{ models: str
     45000
   );
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw providerError(res.status, text.slice(0, 400) || `Chat probe failed (${res.status})`);
+    throw providerError(res.status, `Chat probe failed (${res.status}).`);
   }
   const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
   if (!json.choices) throw providerError(502, "Malformed provider response: missing choices array.");
@@ -81,8 +79,8 @@ export async function chatCompletion(cfg: ProviderConfig, messages: ChatMessage[
     opts?.timeoutMs ?? 120000
   );
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw providerError(res.status, text.slice(0, 500) || `Chat completion failed (${res.status})`);
+    // Providers may echo credentials or private prompts in error bodies.
+    throw providerError(res.status, `Chat completion failed (${res.status}).`);
   }
   const json = (await res.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
   const content = json.choices?.[0]?.message?.content;

@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "DifFox — AI PR Reviews",
-  description: "CodeRabbit-style GitHub PR reviewer. Automatic summary plus actionable inline comments.",
+  description: "AI pull request reviewer with encrypted provider keys, incremental reviews, and actionable inline feedback.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -32,16 +32,31 @@ GITHUB_APP_SLUG=diffox-yourname
 
 Restart the app + worker.
 
-## 3. Install on repositories
+## 3. Enable verified GitHub identity
+
+Enable the GitHub social connection in Clerk. Users must link their GitHub account
+through the Clerk Manage account screen or sign in using GitHub. DifFox fetches
+that user's OAuth token server-side and verifies personal installation ownership
+using `GET /user`. Organization installations require an **active organization
+owner** (`admin` role) verified through `GET /user/memberships/orgs/{org}`; configure
+`read:org` in your Clerk GitHub OAuth scopes and reauthorize the connection.
+A regular organization member cannot connect all installation repositories.
+Missing, revoked, or insufficient OAuth access fails closed with HTTP 403.
+
+Apply `0003_installation_verification.sql`. Existing installations must be
+reconnected; until then, webhooks and workers ignore them. Only an App installation
+ID from a redirect is insufficient proof of ownership.
+
+## 4. Install on repositories
 
 1. Sign in to DifFox → **Settings → GitHub connection → Install GitHub App**.
 2. Choose **Only select repositories** and pick the repos to review.
 3. GitHub redirects back with an `installation_id`; paste it into **Verify & connect**.
-   The server re-reads the installation and repository list from the GitHub API —
-   the browser-supplied ID is only a pointer, never trusted data.
+   The server verifies your linked GitHub identity owns the installation before
+   reading its repositories and saving the connection.
 4. Manage per-repo **automatic-review toggles and excluded paths** in **Repositories**.
 
-## 4. Webhook behavior
+## 5. Webhook behavior
 
 - The endpoint verifies `X-Hub-Signature-256` against the raw body, deduplicates by
   `X-GitHub-Delivery`, handles `pull_request` (`opened`, `synchronize`, `ready_for_review`)

@@ -35,7 +35,8 @@ const PatchBody = z.object({
 });
 
 /** Toggle automatic review or update excluded paths (account-owned rows only). */
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     if (!supabaseConfigured()) return NextResponse.json({ error: "Database not configured." }, { status: 501 });
     const account = await requireAccount();
@@ -46,7 +47,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const { data: existing, error: findErr } = await db
       .from("repositories")
       .select("id, account_id")
-      .eq("id", params.id)
+      .eq("id", id)
       .maybeSingle();
     if (findErr) throw new Error(findErr.message);
     if (!existing || existing.account_id !== account.id) {
@@ -63,7 +64,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const { data, error } = await db
       .from("repositories")
       .update(patch)
-      .eq("id", params.id)
+      .eq("id", id)
       .select("id, full_name, auto_review, excluded_paths")
       .single();
     if (error) throw new Error(error.message);

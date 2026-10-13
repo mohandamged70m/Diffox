@@ -38,10 +38,14 @@ export async function POST(req: Request) {
       .select("id")
       .single();
     if (revErr || !review) return NextResponse.json({ error: "Could not enqueue test review." }, { status: 500 });
-    await db.from("review_jobs").insert({
+    const { error: jobError } = await db.from("review_jobs").insert({
       account_id: account.id, review_id: review.id, repo_full_name: b.repo_full_name,
       pr_number: b.pr_number, head_sha: b.head_sha, status: "queued", dedupe_key: dedupeKey,
     });
+    if (jobError) {
+      await db.from("reviews").update({ status: "failed", error: "Could not enqueue test job." }).eq("id", review.id);
+      return NextResponse.json({ error: "Could not enqueue test job." }, { status: 500 });
+    }
     return NextResponse.json({
       review_id: review.id,
       warning: "SIMULATED review — local test mode only, not a real GitHub result.",

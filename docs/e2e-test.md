@@ -6,7 +6,7 @@ For a no-GitHub dry run, use the local-test variant at the bottom.
 ## Prerequisites
 
 - DifFox deployed with public HTTPS (webhook must reach `/api/webhooks/github`).
-- Clerk + Supabase configured, migration `0001_init.sql` applied.
+- Clerk + Supabase configured, all migrations applied, GitHub identity linked and installation verified.
 - AI key saved in Settings, GitHub App installed on a **test repository**.
 
 ## The deliberate bug
@@ -33,7 +33,7 @@ Expected DifFox findings (any model should catch at least the SQL injection):
 ## Steps
 
 1. Open the PR → webhook `pull_request: opened` → job queued (`Reviews` shows `queued` → `running`).
-2. Within ~1–2 worker polls, the bot posts **one** review (`COMMENT` event): summary +
+2. After the worker claims and processes the job, the bot posts **one** review (`COMMENT` event): summary +
    inline comments on the added lines. `Reviews → detail` shows the same summary,
    findings with severity/evidence/fix, reviewed commit = PR head SHA, skipped files.
 3. Push a fix (parameterized query + session user + validation) → `synchronize` →
@@ -54,6 +54,8 @@ lease expires, the job is reclaimed, and the retry **adopts** the posted review 
 its marker instead of posting a duplicate.
 
 ## Local-test variant (no GitHub)
+
+Set `DIFFOX_LOCAL_TEST=1` in both the web and worker environment.
 
 ```bash
 DIFFOX_LOCAL_TEST=1 npm run worker

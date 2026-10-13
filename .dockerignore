@@ -5,5 +5,5 @@ data
 Dockerfile
 .dockerignore
 *.log
-.env
-.env.local
+.env*
+!.env.example

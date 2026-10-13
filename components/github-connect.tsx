@@ -58,7 +58,7 @@ export function GitHubConnect({ installUrl, appConfigured }: { installUrl: strin
         </button>
       </form>
       {message && <p role="status" className="text-sm text-neutral-300">{message}</p>}
-      <p className="text-xs text-neutral-500">Only the installation ID is taken from the browser — the account and repository list are read server-side from GitHub.</p>
+      <p className="text-xs text-neutral-500">Link GitHub through Manage account first. You can connect your personal account or an organization you own.</p>
     </div>
   );
 }

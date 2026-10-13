@@ -1,21 +1,20 @@
-# DifFox — CodeRabbit-style GitHub PR reviewer
+# DifFox — AI pull request reviewer
 
 Sign in → configure AI provider → install the GitHub App → open a PR → get an automatic
 summary plus actionable inline comments. Pushes re-review incrementally.
 
-Next.js 14 (App Router) · TypeScript · Tailwind · Clerk (auth) · Supabase Postgres ·
+Next.js 15 (App Router) · TypeScript · Tailwind · Clerk (auth) · Supabase Postgres ·
 Octokit (GitHub App) · Zod · durable Postgres job queue + separate Node.js review worker.
 
 ## Quick start
 
 ```bash
-npm install
+npm ci
 cp .env.example .env   # fill as you go; the app boots without keys and shows setup states
 npm run dev            # app on http://localhost:3000
 ```
 
-Apply the database schema before first use: run
-`supabase/migrations/0001_init.sql` (and `0002_local_fixture.sql`) via
+Apply all SQL files in `supabase/migrations/` in numeric order before first use via
 `supabase db push` or the Supabase SQL editor. RLS is deny-by-default; all dashboard
 access goes through server routes that enforce Clerk ownership per row.
 
@@ -27,13 +26,16 @@ Real reviews require the worker — a **separate Node.js process** (never Vercel
 npm run worker   # polls review_jobs every WORKER_POLL_MS (default 5000)
 ```
 
+Use Node.js 22.12 or newer. The worker loads `.env`/`.env.local` from the project
+root, just like Next.js. Deployment environment variables take precedence.
+
 The worker needs `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
 `ENCRYPTION_SECRET`, the GitHub App variables, and an `AI_PROVIDER_BASE_URL`.
 It claims jobs atomically (conditional UPDATE on status/lease, so multiple workers
-never double-claim), holds a 10-minute lease, retries with bounded attempts (4),
+do not claim the same unexpired lease), holds a 10-minute lease, retries with bounded attempts (4),
 and reclaims stale leases after a crash. Failed jobs surface in Reviews with their
-error; retries reconcile already-posted GitHub reviews via a hidden marker, so a
-crash never creates duplicate feedback.
+error; retries reconcile already-posted GitHub reviews via a hidden marker to
+reduce duplicate feedback. The worker renews active leases during long reviews.
 
 Deploy as two processes sharing env: e.g. `npm start` + `npm run worker` on a VPS,
 or two services sharing a database (see `docker-compose.yml`).
@@ -54,7 +56,8 @@ curl -X POST http://localhost:3000/api/test/local-review \
 The worker runs the model pipeline on the fixture (or a canned result with no key)
 and persists findings. Every simulated summary starts with
 `[SIMULATED — local test mode, not a real GitHub review]`. **Never present simulated
-reviews as real GitHub results.** The endpoint 404s unless `DIFFOX_LOCAL_TEST=1`.
+reviews as real GitHub results.** Set `DIFFOX_LOCAL_TEST=1` for **both** the web app and worker. The endpoint
+404s unless this flag is enabled. Keep it disabled for real deployments.
 
 A deliberate-bug fixture for end-to-end testing lives in `docs/e2e-test.md`.
 
@@ -77,4 +80,9 @@ Setup guides: `docs/ai-providers.md`, `docs/github-app.md`, `docs/e2e-test.md` (
 
 - `npm run dev` / `build` / `start` — app
 - `npm run worker` — review worker (separate process; required for real reviews)
-- `npm test` — vitest suite (Phase 5)
+- `npm test` — Vitest regression suite
+- `npm run typecheck` — TypeScript checks
+- `npm run verify` — TypeScript + tests + production build
+
+Deployment and portfolio release checklist: [docs/deployment.md](docs/deployment.md).
+Readiness findings and scope: [docs/portfolio-readiness.md](docs/portfolio-readiness.md).

@@ -22,6 +22,7 @@
  * labeled and must never be presented as real GitHub results.
  */
 import crypto from "node:crypto";
+import { loadEnvConfig } from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 import { Octokit } from "octokit";
 import { chatCompletion, withBackoff } from "../lib/providers/openai-compatible";
@@ -31,6 +32,8 @@ import { parseReviewOutput } from "../lib/review/schema";
 import { classifyFile } from "../lib/review/filter";
 import { parseDiffSides, mapToInlinePosition, dedupeFindings } from "../lib/github/positions";
 import { summaryBody, classifyHeadState, findPostedReviewId } from "../lib/github/publish";
+
+loadEnvConfig(process.cwd());
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS || 5000);
 const LEASE_MS = 10 * 60 * 1000;
@@ -138,6 +141,38 @@ function sidesFromPatches(files: { filename: string; patch?: string }[]) {
 }
 
 async function processJob(supabase: ReturnType<typeof db>, job: Job) {
+  // Long PRs can exceed the initial lease. Renew it while this process owns it.
+  let renewing = false;
+  const heartbeat = setInterval(async () => {
+    if (renewing) return;
+    renewing = true;
+    try {
+      const { error } = await supabase.from("review_jobs")
+        .update({ lease_expires_at: new Date(Date.now() + LEASE_MS).toISOString() })
+        .eq("id", job.id).eq("status", "running").eq("claimed_by", WORKER_ID);
+      if (error) console.error(`[${WORKER_ID}] lease renewal failed for ${job.id}`);
+    } catch {
+      console.error(`[${WORKER_ID}] lease renewal request failed for ${job.id}`);
+    } finally {
+      renewing = false;
+    }
+  }, 60_000);
+  heartbeat.unref();
+  try {
+    await processOwnedJob(supabase, job);
+  } finally {
+    clearInterval(heartbeat);
+  }
+}
+
+async function assertJobLease(supabase: ReturnType<typeof db>, job: Job) {
+  const { data, error } = await supabase.from("review_jobs").select("id")
+    .eq("id", job.id).eq("status", "running").eq("claimed_by", WORKER_ID)
+    .gt("lease_expires_at", new Date().toISOString()).maybeSingle();
+  if (error || !data) throw new Error("Review job lease was lost; publishing stopped.");
+}
+
+async function processOwnedJob(supabase: ReturnType<typeof db>, job: Job) {
   const { data: review } = await supabase.from("reviews").select("*").eq("id", job.review_id).maybeSingle();
   if (!review) {
     await supabase.from("review_jobs").update({ status: "failed", last_error: "Review row missing." }).eq("id", job.id);
@@ -159,8 +194,17 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
     const { data: repoLookup } = await supabase.from("repositories")
       .select("installation_id, auto_review, excluded_paths")
       .eq("id", review.repository_id)
+      .eq("account_id", job.account_id)
       .maybeSingle();
     if (!repoLookup) throw Object.assign(new Error("Repository no longer connected."), { terminal: true });
+    const { data: binding, error: bindingError } = await supabase.from("installations")
+      .select("id").eq("account_id", job.account_id).eq("installation_id", repoLookup.installation_id)
+      .not("verified_at", "is", null).maybeSingle();
+    if (bindingError) throw new Error("Installation verification lookup failed.");
+    if (!binding) {
+      await skipBoth(supabase, job, review.id, "Reconnect GitHub in Settings to verify installation ownership.");
+      return;
+    }
     if (!repoLookup.auto_review) {
       await skipBoth(supabase, job, review.id, "Automatic review is disabled for this repository.");
       return;
@@ -343,6 +387,8 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
         break;
     }
 
+    await assertJobLease(supabase, job);
+
     // Reconcile: adopt an already-posted review (same marker) instead of double-posting.
     let githubReviewId: number | null = review.github_review_id || null;
     if (!githubReviewId) {
@@ -368,6 +414,8 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
       githubReviewId = Number(posted.data.id);
     }
 
+    await assertJobLease(supabase, job);
+
     // Persist (findings replaced idempotently so retries never duplicate rows).
     await supabase.from("findings").delete().eq("review_id", review.id);
     if (deduped.length) {
@@ -387,6 +435,8 @@ async function processJob(supabase: ReturnType<typeof db>, job: Job) {
     await supabase.from("review_jobs").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", job.id);
     console.log(`[${WORKER_ID}] reviewed ${job.repo_full_name}#${job.pr_number}@${job.head_sha.slice(0, 7)} (${deduped.length} findings, ${inline.length} inline)`);
   } catch (e) {
+    // A reclaimed job belongs to another worker; never overwrite its state.
+    try { await assertJobLease(supabase, job); } catch { return; }
     const c = classifyError(e);
     const terminal = (e as { terminal?: boolean })?.terminal === true || c.kind === "auth" || c.kind === "model";
     if ((e as { status?: number })?.status === 401 || c.kind === "auth") {
