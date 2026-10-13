@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { clerkClient } from "@clerk/nextjs/server";
+import { Octokit } from "octokit";
+import { verifyInstallationOwner } from "@/lib/github/installation-access";
 import { requireAccount } from "@/lib/auth";
 import { supabaseService, supabaseConfigured } from "@/lib/supabase/server";
 import { githubAppConfigured, appOctokit, installationOctokit, appInstallUrl } from "@/lib/github/app";
@@ -11,7 +14,7 @@ export async function GET() {
     const account = await requireAccount();
     const db = supabaseService();
     const [{ data: installations }, { data: repos }] = await Promise.all([
-      db.from("installations").select("installation_id, account_login, account_type, created_at").eq("account_id", account.id),
+      db.from("installations").select("installation_id, account_login, account_type, created_at, verified_at").eq("account_id", account.id),
       db.from("repositories").select("id, full_name, auto_review").eq("account_id", account.id).order("full_name"),
     ]);
     return NextResponse.json({
@@ -46,7 +49,7 @@ export async function POST(req: Request) {
 
     // Verify the installation exists and read its truth from GitHub.
     const app = appOctokit();
-    let installation: { account: { login: string; type: string } | null };
+    let installation: { account: { id: number; login: string; type: string } | null };
     try {
       const res = await app.request("GET /app/installations/{installation_id}", { installation_id: installationId });
       installation = res.data as typeof installation;
@@ -55,7 +58,28 @@ export async function POST(req: Request) {
     }
     if (!installation.account) return NextResponse.json({ error: "GitHub returned an installation without an account." }, { status: 502 });
 
-    // List accessible repositories with the installation token (server-side truth).
+    // An App credential proves the installation exists, NOT that this user owns it.
+    // Require a server-fetched OAuth token for the Clerk user's linked GitHub identity.
+    const clerk = await clerkClient();
+    let githubToken: string | undefined;
+    try {
+      const tokens = await clerk.users.getUserOauthAccessToken(account.clerk_user_id, "github");
+      githubToken = tokens.data[0]?.token;
+    } catch {
+      // Missing/revoked social connection must fail closed.
+    }
+    if (!githubToken) return NextResponse.json({ error: "Link your GitHub account through Manage account, then reconnect." }, { status: 403 });
+    const userOcto = new Octokit({ auth: githubToken });
+    try {
+      await verifyInstallationOwner(installation.account, {
+        currentUser: async () => (await userOcto.request("GET /user")).data,
+        organizationMembership: async (org) => (await userOcto.request("GET /user/memberships/orgs/{org}", { org })).data,
+      });
+    } catch {
+      return NextResponse.json({ error: "Connect an installation on your own GitHub account or an organization you own. For organizations, grant read:org access and reconnect GitHub." }, { status: 403 });
+    }
+
+    // List accessible repositories only AFTER proving installation ownership.
     const octo = await installationOctokit(installationId);
     const repos: { id: number; full_name: string }[] = [];
     for (let page = 1; page <= 10; page++) {
@@ -71,13 +95,14 @@ export async function POST(req: Request) {
         installation_id: installationId,
         account_login: installation.account.login,
         account_type: installation.account.type,
+        verified_at: new Date().toISOString(),
       },
       { onConflict: "account_id,installation_id" }
     );
     if (instErr) return NextResponse.json({ error: `Saving installation failed: ${instErr.message}` }, { status: 500 });
 
     for (const r of repos) {
-      await db.from("repositories").upsert(
+      const { error: repoError } = await db.from("repositories").upsert(
         {
           account_id: account.id,
           installation_id: installationId,
@@ -87,6 +112,7 @@ export async function POST(req: Request) {
         },
         { onConflict: "account_id,github_repo_id" }
       );
+      if (repoError) throw new Error("Repository sync failed. Retry connecting.");
     }
     return NextResponse.json({
       ok: true,

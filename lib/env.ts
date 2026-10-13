@@ -23,7 +23,9 @@ let cached: Env | null = null;
 /** Validated server env. Optional integrations stay optional so the app boots without credentials. */
 export function getEnv(): Env {
   if (cached) return cached;
-  cached = envSchema.parse(process.env);
+  // Empty placeholders in .env.example represent integrations not configured yet.
+  const values = Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== ""));
+  cached = envSchema.parse(values);
   return cached;
 }
 

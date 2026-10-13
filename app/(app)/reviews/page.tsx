@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 
 const STATUSES = ["queued", "running", "completed", "skipped", "superseded", "failed"] as const;
 
-export default async function ReviewsPage({ searchParams }: { searchParams: { status?: string } }) {
+export default async function ReviewsPage({ searchParams: input }: { searchParams: Promise<{ status?: string }> }) {
+  const searchParams = await input;
   if (!supabaseConfigured()) {
     return (
       <div className="space-y-2">

@@ -2,8 +2,8 @@ node_modules/
 .next/
 data/
 !.env.example
-.env
-.env.local
+.env*
+!.env.example
 *.log
 
 # build artifacts

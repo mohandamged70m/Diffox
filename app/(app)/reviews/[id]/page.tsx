@@ -14,11 +14,12 @@ const SEV_COLORS: Record<string, string> = {
   info: "bg-neutral-800 text-neutral-400",
 };
 
-export default async function ReviewDetailPage({ params }: { params: { id: string } }) {
+export default async function ReviewDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   if (!supabaseConfigured()) notFound();
   const account = await requireAccount();
   const db = supabaseService();
-  const { data: review } = await db.from("reviews").select("*").eq("id", params.id).maybeSingle();
+  const { data: review } = await db.from("reviews").select("*").eq("id", id).maybeSingle();
   if (!review || review.account_id !== account.id) notFound(); // 404, not 403 — no cross-account leakage
   const { data: findings } = await db.from("findings").select("*").eq("review_id", review.id).order("created_at");
   const skipped = (review.skipped_files || []) as { path: string; reason: string }[];

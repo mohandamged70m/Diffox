@@ -32,26 +32,31 @@ export async function POST(req: Request) {
 
   const db = supabaseService();
 
-  // Deduplicate deliveries (retries / redeliveries).
-  const { error: delErr } = await db
-    .from("webhook_deliveries")
-    .insert({ delivery_id: delivery, event, action: (payload.action as string) || null });
-  if (delErr) {
-    if (delErr.code === "23505") return NextResponse.json({ ok: true, duplicate: true });
-    return NextResponse.json({ error: "Delivery log failed." }, { status: 500 });
-  }
+  // Only successful handling is recorded. A transient failure remains retryable.
+  // Concurrent deliveries are safe because review_jobs has a unique dedupe_key.
+  const { data: previous, error: readError } = await db.from("webhook_deliveries")
+    .select("delivery_id").eq("delivery_id", delivery).maybeSingle();
+  if (readError) return NextResponse.json({ error: "Delivery lookup failed." }, { status: 500 });
+  if (previous) return NextResponse.json({ ok: true, duplicate: true });
 
   try {
+    let response: Response;
     if (event === "installation" || event === "installation_repositories") {
       await handleInstallationEvent(db, event, payload);
-      return NextResponse.json({ ok: true });
+      response = NextResponse.json({ ok: true });
+    } else if (event === "pull_request") {
+      response = await handlePullRequest(db, payload);
+    } else {
+      response = NextResponse.json({ ok: true, ignored: event });
     }
-    if (event === "pull_request") {
-      return await handlePullRequest(db, payload);
+    if (response.ok) {
+      const { error } = await db.from("webhook_deliveries")
+        .insert({ delivery_id: delivery, event, action: (payload.action as string) || null });
+      if (error && error.code !== "23505") throw new Error("Delivery log failed.");
     }
-    return NextResponse.json({ ok: true, ignored: event });
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error)?.message || "Webhook handling failed." }, { status: 500 });
+    return response;
+  } catch {
+    return NextResponse.json({ error: "Webhook handling failed; retry this delivery." }, { status: 500 });
   }
 }
 
@@ -63,7 +68,7 @@ async function handleInstallationEvent(db: Db, event: string, payload: Record<st
   if (!installation?.id) return;
   if (event === "installation" && action === "deleted") {
     // GitHub source of truth: remove every binding for this installation id.
-    const { data: rows } = await db.from("installations").select("account_id").eq("installation_id", installation.id);
+    const { data: rows } = await db.from("installations").select("account_id").eq("installation_id", installation.id).not("verified_at", "is", null);
     for (const r of rows || []) {
       await db.from("repositories").delete().eq("account_id", r.account_id).eq("installation_id", installation.id);
     }
@@ -73,7 +78,8 @@ async function handleInstallationEvent(db: Db, event: string, payload: Record<st
   // added / created / repository added|removed → re-sync repository list server-side.
   if (action === "deleted") return;
   const { installationOctokit } = await import("@/lib/github/app");
-  const { data: owners } = await db.from("installations").select("account_id").eq("installation_id", installation.id);
+  const { data: owners, error: ownersError } = await db.from("installations").select("account_id").eq("installation_id", installation.id).not("verified_at", "is", null);
+  if (ownersError) throw new Error("Installation lookup failed.");
   if (!owners?.length) return; // not connected by any DifFox account
   let repos: { id: number; full_name: string }[] = [];
   try {
@@ -84,7 +90,7 @@ async function handleInstallationEvent(db: Db, event: string, payload: Record<st
       if (res.data.repositories.length < 100) break;
     }
   } catch {
-    return; // transient GitHub failure — a later event or manual reconnect re-syncs
+    throw new Error("GitHub repository sync failed.");
   }
   const wanted = new Set(repos.map((r) => r.id));
   for (const o of owners) {
@@ -122,7 +128,8 @@ async function handlePullRequest(db: Db, payload: Record<string, unknown>) {
   if (pr.state === "closed") return NextResponse.json({ ok: true, skipped: "closed" });
 
   // Resolve owning account(s) from the installation — never trust browser data here.
-  const { data: owners } = await db.from("installations").select("account_id").eq("installation_id", installation.id);
+  const { data: owners, error: ownersError } = await db.from("installations").select("account_id").eq("installation_id", installation.id).not("verified_at", "is", null);
+  if (ownersError) throw new Error("Installation lookup failed.");
   if (!owners?.length) return NextResponse.json({ ok: true, skipped: "unconnected-installation" });
 
   const results: unknown[] = [];
@@ -140,16 +147,17 @@ async function enqueueForAccount(
 ) {
   const headSha = pr.head.sha;
   // Repository must be known and auto-review enabled.
-  const { data: repoRow } = await db
+  const { data: repoRow, error: repoError } = await db
     .from("repositories")
     .select("id, auto_review")
     .eq("account_id", accountId)
     .eq("github_repo_id", repo.id)
     .maybeSingle();
+  if (repoError) throw new Error("Repository lookup failed.");
   if (!repoRow) return { account: accountId, skipped: "repo-not-connected" };
 
   const skippedReview = async (reason: string) => {
-    const { data } = await db
+    const { data, error } = await db
       .from("reviews")
       .insert({
         account_id: accountId, repository_id: repoRow.id, repo_full_name: repo.full_name,
@@ -158,7 +166,8 @@ async function enqueueForAccount(
       })
       .select("id")
       .single();
-    return { review_id: data?.id, skipped: reason };
+    if (error || !data) throw new Error("Could not save skipped review.");
+    return { review_id: data.id, skipped: reason };
   };
 
   if (!repoRow.auto_review) return skippedReview("Automatic review is disabled for this repository.");
@@ -176,7 +185,7 @@ async function enqueueForAccount(
     .eq("status", "queued").neq("head_sha", headSha);
 
   // Incremental base: last successfully reviewed SHA for this PR.
-  const { data: lastDone } = await db
+  const { data: lastDone, error: lastError } = await db
     .from("reviews")
     .select("head_sha")
     .eq("account_id", accountId).eq("repo_full_name", repo.full_name).eq("pr_number", pr.number)
@@ -184,11 +193,12 @@ async function enqueueForAccount(
     .order("completed_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (lastError) throw new Error("Previous review lookup failed.");
   const prevHeadSha = lastDone?.head_sha && lastDone.head_sha !== headSha ? lastDone.head_sha : null;
 
   // Idempotency: same repo + PR + SHA (+ account) enqueues exactly once.
   const dedupeKey = buildDedupeKey(accountId, repo.full_name, pr.number, headSha);
-  const { data: review } = await db
+  const { data: review, error: reviewError } = await db
     .from("reviews")
     .insert({
       account_id: accountId, repository_id: repoRow.id, repo_full_name: repo.full_name,
@@ -198,7 +208,7 @@ async function enqueueForAccount(
     })
     .select("id")
     .single();
-  if (!review) return { skipped: "review-insert-failed" };
+  if (reviewError || !review) throw new Error("Could not save review.");
 
   const { error: jobErr } = await db.from("review_jobs").insert({
     account_id: accountId, review_id: review.id, repo_full_name: repo.full_name,
@@ -211,7 +221,7 @@ async function enqueueForAccount(
       return { duplicate: true };
     }
     await db.from("reviews").update({ status: "failed", error: jobErr.message }).eq("id", review.id);
-    return { error: jobErr.message };
+    throw new Error("Could not enqueue review.");
   }
   return { review_id: review.id, mode: prevHeadSha ? "incremental" : "full" };
 }
